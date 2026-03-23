@@ -1,10 +1,11 @@
-# Home Assist - Phase 1
+# Home Assist
 
-Phase 1 includes:
-- Next.js + TypeScript strict + Tailwind setup
-- Firebase client + Firestore connection scaffolding
-- Simple login using `localStorage` key `homeassist_username`
-- Route guard for protected routes (`/dashboard`)
+Current status: completed up to Phase 5.
+- Phase 1: project setup + Firebase + localStorage login
+- Phase 2: realtime CRUD members/task templates
+- Phase 3: daily plan by date + generate daily tasks
+- Phase 4: round-robin spin assignment + spin logs
+- Phase 5: mobile polish + basic PWA + deploy checklist
 
 ## 1) Local setup
 
@@ -73,3 +74,30 @@ After first deploy:
    - first visit shows login page
    - submit name -> redirect to `/dashboard`
    - click logout -> back to `/login`
+
+## 6) Phase 5 PWA
+
+PWA assets added:
+- `src/app/manifest.ts`
+- `public/sw.js`
+- `public/icons/icon-192.svg`
+- `public/icons/icon-512.svg`
+
+How to test PWA install:
+1. Deploy to Vercel (HTTPS required).
+2. Open site on mobile Chrome/Edge.
+3. Open browser menu -> **Add to Home screen** / **Install app**.
+4. Launch app from icon and verify it opens in standalone window.
+
+Offline basic behavior:
+- Service worker caches app shell and recent GET requests.
+- If network is unavailable, it falls back to cached content.
+
+## 7) Production deploy checklist
+
+- [ ] All `NEXT_PUBLIC_FIREBASE_*` env vars set in Vercel.
+- [ ] `npm run lint` passes.
+- [ ] `npm run build` passes.
+- [ ] Firestore rules are set for your intended environment.
+- [ ] Open production URL and verify login, CRUD, daily plan, spin, and logs.
+- [ ] Test install prompt on a mobile browser.

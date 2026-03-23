@@ -1,8 +1,8 @@
 "use client";
 
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { getStoredUsername } from "@/lib/storage";
+import { useStoredUsername } from "@/hooks/use-stored-username";
 
 type RouteGuardProps = {
   children: ReactNode;
@@ -10,7 +10,8 @@ type RouteGuardProps = {
 
 export function RouteGuard({ children }: RouteGuardProps) {
   const router = useRouter();
-  const [hasUser] = useState(() => Boolean(getStoredUsername()));
+  const username = useStoredUsername();
+  const hasUser = Boolean(username);
 
   useEffect(() => {
     if (!hasUser) {
@@ -21,7 +22,7 @@ export function RouteGuard({ children }: RouteGuardProps) {
   if (!hasUser) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-zinc-50 p-4">
-        <p className="text-sm text-zinc-600">Dang kiem tra phien dang nhap...</p>
+        <p className="text-sm text-zinc-600">Dang chuyen huong den trang dang nhap...</p>
       </div>
     );
   }
