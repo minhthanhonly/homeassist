@@ -1,36 +1,75 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Home Assist - Phase 1
 
-## Getting Started
+Phase 1 includes:
+- Next.js + TypeScript strict + Tailwind setup
+- Firebase client + Firestore connection scaffolding
+- Simple login using `localStorage` key `homeassist_username`
+- Route guard for protected routes (`/dashboard`)
 
-First, run the development server:
+## 1) Local setup
+
+1. Install dependencies:
+
+```bash
+npm install
+```
+
+2. Create `.env.local` from sample file:
+
+```bash
+# macOS/Linux
+cp .env.local.example .env.local
+
+# Windows (PowerShell)
+copy .env.local.example .env.local
+```
+
+3. Fill Firebase values in `.env.local` from your Firebase project settings.
+
+4. Run app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+5. Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 2) Required environment variables
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+```env
+NEXT_PUBLIC_FIREBASE_API_KEY=
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+NEXT_PUBLIC_FIREBASE_APP_ID=
+```
 
-## Learn More
+## 3) Scripts
 
-To learn more about Next.js, take a look at the following resources:
+- `npm run dev` - run development server
+- `npm run build` - production build
+- `npm run start` - run production server
+- `npm run lint` - run lint checks
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## 4) Vercel auto deploy (GitHub)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Push this repo to GitHub.
+2. Go to [Vercel](https://vercel.com), click **Add New Project**.
+3. Import the GitHub repository.
+4. Framework preset: **Next.js** (auto-detected).
+5. In Project Settings -> Environment Variables, add all variables from `.env.local.example`.
+6. Click **Deploy**.
 
-## Deploy on Vercel
+After first deploy:
+- Every push to `main` triggers automatic production deployment.
+- Every pull request creates a preview deployment automatically.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 5) Verify deploy success
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. In Vercel dashboard, confirm latest deployment status is **Ready**.
+2. Open deployed URL.
+3. Confirm flow:
+   - first visit shows login page
+   - submit name -> redirect to `/dashboard`
+   - click logout -> back to `/login`
