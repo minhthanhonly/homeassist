@@ -310,16 +310,6 @@ export default function DashboardPage() {
         <div className="grid grid-cols-2 gap-2">
           <button
             type="button"
-            onClick={() => setActiveSection("setup")}
-            className={`rounded-xl px-3 py-2 text-center text-xs font-semibold ${
-              activeSection === "setup" ? "bg-indigo-600 text-white" : "bg-zinc-100 text-zinc-700"
-            }`}
-          >
-            <span className="block text-lg">⚙️</span>
-            Quản lý
-          </button>
-          <button
-            type="button"
             onClick={() => setActiveSection("plan")}
             className={`rounded-xl px-3 py-2 text-center text-xs font-semibold ${
               activeSection === "plan" ? "bg-indigo-600 text-white" : "bg-zinc-100 text-zinc-700"
@@ -327,6 +317,16 @@ export default function DashboardPage() {
           >
             <span className="block text-lg">🎡</span>
             Phân công
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveSection("setup")}
+            className={`rounded-xl px-3 py-2 text-center text-xs font-semibold ${
+              activeSection === "setup" ? "bg-indigo-600 text-white" : "bg-zinc-100 text-zinc-700"
+            }`}
+          >
+            <span className="block text-lg">⚙️</span>
+            Quản lý
           </button>
         </div>
       </section>
