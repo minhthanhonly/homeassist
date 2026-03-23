@@ -151,51 +151,67 @@ export function subscribeDailyTasks(
   onData: (tasks: DailyTask[]) => void,
 ): () => void {
   const q = query(dailyTasksCollectionRef(dateKey), orderBy("title", "asc"));
-  return onSnapshot(q, (snapshot) => {
-    const tasks = snapshot.docs.map((item) => {
-      const value = item.data() as Omit<DailyTask, "id">;
-      return {
-        id: item.id,
-        ...value,
-      };
-    });
-    onData(tasks);
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const tasks = snapshot.docs.map((item) => {
+        const value = item.data() as Omit<DailyTask, "id">;
+        return {
+          id: item.id,
+          ...value,
+        };
+      });
+      onData(tasks);
+    },
+    () => {
+      onData([]);
+    },
+  );
 }
 
 export function subscribeSpinLogs(dateKey: string, onData: (logs: SpinLog[]) => void): () => void {
   const q = query(spinLogsCollectionRef(dateKey), orderBy("createdAt", "desc"));
-  return onSnapshot(q, (snapshot) => {
-    const logs = snapshot.docs.map((item) => {
-      const value = item.data() as Omit<SpinLog, "id">;
-      return {
-        id: item.id,
-        ...value,
-      };
-    });
-    onData(logs);
-  });
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const logs = snapshot.docs.map((item) => {
+        const value = item.data() as Omit<SpinLog, "id">;
+        return {
+          id: item.id,
+          ...value,
+        };
+      });
+      onData(logs);
+    },
+    () => {
+      onData([]);
+    },
+  );
 }
 
 export function subscribePlanHistory(
   dateKey: string,
   onData: (logs: PlanHistoryLog[]) => void,
 ): () => void {
-  const q = query(
-    planHistoryCollectionRef(),
-    where("date", "==", dateKey),
-    orderBy("createdAt", "desc"),
+  const q = query(planHistoryCollectionRef(), where("date", "==", dateKey));
+  return onSnapshot(
+    q,
+    (snapshot) => {
+      const logs = snapshot.docs
+        .map((item) => {
+          const value = item.data() as Omit<PlanHistoryLog, "id">;
+          return {
+            id: item.id,
+            ...value,
+          };
+        })
+        .sort((a, b) => (b.createdAt?.seconds ?? 0) - (a.createdAt?.seconds ?? 0));
+      onData(logs);
+    },
+    () => {
+      onData([]);
+    },
   );
-  return onSnapshot(q, (snapshot) => {
-    const logs = snapshot.docs.map((item) => {
-      const value = item.data() as Omit<PlanHistoryLog, "id">;
-      return {
-        id: item.id,
-        ...value,
-      };
-    });
-    onData(logs);
-  });
 }
 
 type AssignSpinInput = {
