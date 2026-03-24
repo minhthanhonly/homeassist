@@ -603,9 +603,10 @@ export default function DashboardPage() {
             <div className="relative flex h-56 w-56 items-center justify-center">
               <div className="absolute top-0 z-10 -translate-y-1 text-2xl">▼</div>
               <div
-                className="h-52 w-52 rounded-full border-4 border-white shadow-xl"
+                className="relative h-52 w-52 rounded-full border-4 border-white shadow-xl"
                 style={{
                   transform: `rotate(${wheelRotationDeg}deg)`,
+                  transformOrigin: "center center",
                   transition: "transform 2.2s cubic-bezier(0.16, 1, 0.3, 1)",
                   background: `conic-gradient(
                     ${Array.from({ length: wheelSegmentCount })
@@ -618,24 +619,31 @@ export default function DashboardPage() {
                       .join(", ")}
                   )`,
                 }}
-              />
-              {wheelTasks.map((task, idx) => {
-                const angle = (360 / wheelSegmentCount) * idx + 360 / wheelSegmentCount / 2 - 90;
-                const radius = 74;
-                const x = Math.cos((angle * Math.PI) / 180) * radius;
-                const y = Math.sin((angle * Math.PI) / 180) * radius;
-                return (
-                  <span
-                    key={task.id}
-                    className="pointer-events-none absolute w-20 -translate-x-1/2 -translate-y-1/2 rounded bg-white/80 px-1 py-0.5 text-center text-[10px] font-semibold text-zinc-800"
-                    style={{ left: `calc(50% + ${x}px)`, top: `calc(50% + ${y}px)` }}
-                  >
-                    {task.title}
-                  </span>
-                );
-              })}
-              <div className="absolute rounded-full bg-white px-3 py-1 text-xs font-semibold text-zinc-700 shadow">
-                Spin
+              >
+                {wheelTasks.map((task, idx) => {
+                  const angle = (360 / wheelSegmentCount) * idx + 360 / wheelSegmentCount / 2 - 90;
+                  const radius = 74;
+                  const x = Math.cos((angle * Math.PI) / 180) * radius;
+                  const y = Math.sin((angle * Math.PI) / 180) * radius;
+                  const posDeg = (Math.atan2(y, x) * 180) / Math.PI;
+                  // Chữ nằm dọc bán kính, hướng về tâm (trục ngang của dòng chữ trùng hướng vào trong)
+                  const labelRotate = posDeg + 180;
+                  return (
+                    <span
+                      key={task.id}
+                      title={task.title}
+                      className="pointer-events-none absolute inline-block truncate whitespace-nowrap rounded bg-white/80 px-1 py-0.5 text-left text-[10px] font-semibold text-zinc-800 shadow-sm"
+                      style={{
+                        left: `calc(50% + ${x}px)`,
+                        top: `calc(50% + ${y}px)`,
+                        maxWidth: `${radius}px`,
+                        transform: `translate(-50%, -50%) rotate(${labelRotate}deg)`,
+                      }}
+                    >
+                      {task.title}
+                    </span>
+                  );
+                })}
               </div>
             </div>
             <button
