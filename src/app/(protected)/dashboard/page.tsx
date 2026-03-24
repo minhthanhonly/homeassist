@@ -10,6 +10,7 @@ import { useStoredUsername } from "@/hooks/use-stored-username";
 import { useDailyTasks } from "@/hooks/use-daily-tasks";
 import { useDailyPlanExists } from "@/hooks/use-daily-plan-exists";
 import { usePlanHistory } from "@/hooks/use-plan-history";
+import { useReminders } from "@/hooks/use-reminders";
 import {
   createMember,
   removeMember,
@@ -28,6 +29,12 @@ import {
   deleteDailyPlan,
   getTodayDateKey,
 } from "@/services/daily-plan-service";
+import {
+  createReminder,
+  removeReminder,
+  toggleReminderDone,
+  updateReminderTitle,
+} from "@/services/reminders-service";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -39,10 +46,12 @@ export default function DashboardPage() {
   const hasDailyPlan = useDailyPlanExists(selectedDate);
   const dailyTasks = useDailyTasks(selectedDate);
   const planHistoryLogs = usePlanHistory(selectedDate);
+  const reminders = useReminders();
   const [activeTab, setActiveTab] = useState<"members" | "tasks">("members");
-  const [activeSection, setActiveSection] = useState<"plan" | "setup">("plan");
+  const [activeSection, setActiveSection] = useState<"plan" | "setup" | "reminders">("plan");
   const [newMemberName, setNewMemberName] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newReminderTitle, setNewReminderTitle] = useState("");
   const [pending, setPending] = useState(false);
   const [dailyPlanMessage, setDailyPlanMessage] = useState("");
   const [dailyPlanMessageTone, setDailyPlanMessageTone] = useState<"success" | "warning">("success");
@@ -265,6 +274,18 @@ export default function DashboardPage() {
     setPending(false);
   };
 
+  const handleCreateReminder = async (event: FormEvent) => {
+    event.preventDefault();
+    if (!newReminderTitle.trim()) {
+      return;
+    }
+    setPending(true);
+    await createReminder(newReminderTitle);
+    setNewReminderTitle("");
+    setToast({ text: "Đã thêm nhắc việc.", tone: "success" });
+    setPending(false);
+  };
+
   const shiftDate = (days: number) => {
     if (!selectedDate) {
       return;
@@ -333,7 +354,7 @@ export default function DashboardPage() {
       </section>
 
       <section className="rounded-2xl bg-white p-3 shadow-md ring-1 ring-indigo-100">
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <button
             type="button"
             onClick={() => setActiveSection("plan")}
@@ -354,8 +375,120 @@ export default function DashboardPage() {
             <span className="block text-lg">⚙️</span>
             Quản lý
           </button>
+          <button
+            type="button"
+            onClick={() => setActiveSection("reminders")}
+            className={`rounded-xl px-3 py-2 text-center text-xs font-semibold ${
+              activeSection === "reminders" ? "bg-indigo-600 text-white" : "bg-zinc-100 text-zinc-700"
+            }`}
+          >
+            <span className="block text-lg">⏰</span>
+            Nhắc việc
+          </button>
         </div>
       </section>
+
+      {activeSection === "reminders" ? (
+        <section className="rounded-2xl bg-white p-5 shadow-md ring-1 ring-indigo-100">
+          <h2 className="text-base font-semibold text-zinc-900">Nhắc việc thông minh</h2>
+          <p className="mt-1 text-sm text-zinc-600">
+            Thêm, sửa, xóa nhắc việc và cập nhật nhanh trạng thái đã làm.
+          </p>
+
+          <form onSubmit={handleCreateReminder} className="mt-4 flex gap-2">
+            <input
+              value={newReminderTitle}
+              onChange={(event) => setNewReminderTitle(event.target.value)}
+              placeholder="Nhập nội dung nhắc việc"
+              className="w-full rounded-xl border border-zinc-300 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-indigo-200"
+            />
+            <button
+              type="submit"
+              disabled={pending}
+              className="rounded-xl bg-zinc-900 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"
+            >
+              Thêm
+            </button>
+          </form>
+
+          <div className="mt-4 space-y-2">
+            {reminders.map((reminder) => (
+              <article key={reminder.id} className="rounded-xl border border-zinc-200 p-3">
+                <div className="flex items-center justify-between gap-2">
+                  <p
+                    className={`truncate text-sm font-semibold ${
+                      reminder.done ? "text-zinc-500 line-through" : "text-zinc-900"
+                    }`}
+                  >
+                    {reminder.title}
+                  </p>
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs ${
+                      reminder.done ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"
+                    }`}
+                  >
+                    {reminder.done ? "Đã làm" : "Chưa làm"}
+                  </span>
+                </div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      setPending(true);
+                      await toggleReminderDone(reminder.id, !reminder.done);
+                      setToast({
+                        text: !reminder.done ? "Đã cập nhật: Đã làm." : "Đã cập nhật: Chưa làm.",
+                        tone: "success",
+                      });
+                      setPending(false);
+                    }}
+                    className="rounded-lg border border-zinc-300 px-2.5 py-1.5 text-xs font-medium text-zinc-700"
+                  >
+                    {reminder.done ? "Đánh dấu chưa làm" : "Đánh dấu đã làm"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const updated = window.prompt("Sửa nhắc việc", reminder.title)?.trim();
+                      if (!updated) {
+                        return;
+                      }
+                      setPending(true);
+                      await updateReminderTitle(reminder.id, updated);
+                      setToast({ text: "Đã cập nhật nhắc việc.", tone: "success" });
+                      setPending(false);
+                    }}
+                    className="rounded-lg border border-zinc-300 px-2.5 py-1.5 text-xs font-medium text-zinc-700"
+                  >
+                    Sửa
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const confirmed = window.confirm("Xóa nhắc việc này?");
+                      if (!confirmed) {
+                        return;
+                      }
+                      setPending(true);
+                      await removeReminder(reminder.id);
+                      setToast({ text: "Đã xóa nhắc việc.", tone: "success" });
+                      setPending(false);
+                    }}
+                    className="rounded-lg border border-rose-300 px-2.5 py-1.5 text-xs font-medium text-rose-700"
+                  >
+                    Xóa
+                  </button>
+                </div>
+              </article>
+            ))}
+            {reminders.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-zinc-300 p-3 text-sm text-zinc-500">
+                Chưa có nhắc việc nào.
+              </p>
+            ) : null}
+          </div>
+        </section>
+      ) : null}
 
       {activeSection === "setup" ? (
       <section className="rounded-2xl bg-white p-5 shadow-md ring-1 ring-indigo-100">

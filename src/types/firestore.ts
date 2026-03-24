@@ -53,3 +53,12 @@ export type PlanHistoryLog = {
   performedByName: string;
   createdAt?: Timestamp;
 };
+
+export type ReminderItem = {
+  id: string;
+  title: string;
+  done: boolean;
+  doneAt: Timestamp | null;
+  createdAt?: Timestamp;
+  updatedAt?: Timestamp;
+};
