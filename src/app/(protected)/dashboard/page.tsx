@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { clearStoredUsername } from "@/lib/storage";
 import { useMembers } from "@/hooks/use-members";
@@ -53,6 +53,7 @@ export default function DashboardPage() {
   );
   const [isSpinning, setIsSpinning] = useState(false);
   const [wheelRotationDeg, setWheelRotationDeg] = useState(0);
+  const spinAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const activeMembersById = new Map(members.filter((member) => member.active).map((member) => [member.id, member]));
   const orderedMembers = (appConfig.memberOrder ?? [])
@@ -91,6 +92,26 @@ export default function DashboardPage() {
     const timeout = window.setTimeout(() => setToast(null), 2200);
     return () => window.clearTimeout(timeout);
   }, [toast]);
+
+  const stopSpinSound = () => {
+    if (spinAudioRef.current) {
+      spinAudioRef.current.pause();
+      spinAudioRef.current.currentTime = 0;
+    }
+  };
+
+  const startSpinSound = async () => {
+    if (!spinAudioRef.current) {
+      spinAudioRef.current = new Audio("/spin.mp3");
+      spinAudioRef.current.preload = "auto";
+      spinAudioRef.current.loop = true;
+      spinAudioRef.current.volume = 0.45;
+    }
+    spinAudioRef.current.currentTime = 0;
+    await spinAudioRef.current.play().catch(() => undefined);
+  };
+
+  useEffect(() => stopSpinSound, []);
 
   const handleDateChange = (nextDate: string) => {
     setSelectedDate(nextDate);
@@ -153,27 +174,32 @@ export default function DashboardPage() {
     setSpinMessage("Đang quay vòng tròn phân công...");
     setSpinMessageTone("info");
     setPending(true);
+    await startSpinSound();
 
-    await new Promise<void>((resolve) => {
-      window.setTimeout(() => resolve(), 2200);
-    });
+    try {
+      await new Promise<void>((resolve) => {
+        window.setTimeout(() => resolve(), 2200);
+      });
 
-    const result = await assignTaskBySpin({
-      dateKey: selectedDate,
-      performedByName: username,
-    });
+      const result = await assignTaskBySpin({
+        dateKey: selectedDate,
+        performedByName: username,
+      });
 
-    if (result.ok) {
-      setSpinMessage(`Đã phân công "${result.selectedTaskTitle}" cho ${result.selectedMemberName}.`);
-      setSpinMessageTone("success");
-      setToast({ text: "Phân công thành công.", tone: "success" });
-    } else {
-      setSpinMessage(result.message);
-      setSpinMessageTone("error");
-      setToast({ text: result.message, tone: "error" });
+      if (result.ok) {
+        setSpinMessage(`Đã phân công "${result.selectedTaskTitle}" cho ${result.selectedMemberName}.`);
+        setSpinMessageTone("success");
+        setToast({ text: "Phân công thành công.", tone: "success" });
+      } else {
+        setSpinMessage(result.message);
+        setSpinMessageTone("error");
+        setToast({ text: result.message, tone: "error" });
+      }
+    } finally {
+      stopSpinSound();
+      setPending(false);
+      setIsSpinning(false);
     }
-    setPending(false);
-    setIsSpinning(false);
   };
 
   const handleBulkAssign = async () => {
