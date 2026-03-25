@@ -62,3 +62,16 @@ export type ReminderItem = {
   createdAt?: Timestamp;
   updatedAt?: Timestamp;
 };
+
+export type RewardRedemption = {
+  id: string;
+  memberId: string;
+  memberName: string;
+  rewardId: string;
+  rewardTitle: string;
+  cost: number;
+  performedByName: string;
+  mysteryPrizeId: string | null;
+  mysteryPrizeLabel: string | null;
+  createdAt?: Timestamp;
+};

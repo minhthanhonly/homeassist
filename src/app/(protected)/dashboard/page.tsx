@@ -25,6 +25,7 @@ import {
 } from "@/services/task-templates-service";
 import {
   assignTaskBySpin,
+  assignUnassignedTaskById,
   createDailyPlanIfMissing,
   deleteDailyPlan,
   getTodayDateKey,
@@ -35,6 +36,32 @@ import {
   toggleReminderDone,
   updateReminderTitle,
 } from "@/services/reminders-service";
+import type { DailyTask } from "@/types/firestore";
+import { RewardsSection } from "@/components/rewards/rewards-section";
+
+function normalizeDeg(deg: number) {
+  return ((deg % 360) + 360) % 360;
+}
+
+/** Góc local (từ 12h, kim đồng hồ) nằm dưới mũi tên cố định 12h khi bánh đã xoay rotationDeg. */
+function segmentIndexUnderPointer(segmentCount: number, rotationDeg: number): number {
+  if (segmentCount <= 0) {
+    return 0;
+  }
+  const slice = 360 / segmentCount;
+  const alpha = normalizeDeg(-rotationDeg);
+  const idx = Math.floor(alpha / slice);
+  return Math.min(Math.max(0, idx), segmentCount - 1);
+}
+
+function sleep(ms: number) {
+  return new Promise<void>((resolve) => {
+    window.setTimeout(resolve, ms);
+  });
+}
+
+const WHEEL_SPIN_MS = 3000;
+const WHEEL_SPIN_TRANSITION = "transform 3s cubic-bezier(0.16, 1, 0.3, 1)";
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -48,7 +75,7 @@ export default function DashboardPage() {
   const planHistoryLogs = usePlanHistory(selectedDate);
   const reminders = useReminders();
   const [activeTab, setActiveTab] = useState<"members" | "tasks">("members");
-  const [activeSection, setActiveSection] = useState<"plan" | "setup" | "reminders">("plan");
+  const [activeSection, setActiveSection] = useState<"plan" | "setup" | "reminders" | "rewards">("plan");
   const [newMemberName, setNewMemberName] = useState("");
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newReminderTitle, setNewReminderTitle] = useState("");
@@ -63,6 +90,11 @@ export default function DashboardPage() {
   const [isSpinning, setIsSpinning] = useState(false);
   const [wheelRotationDeg, setWheelRotationDeg] = useState(0);
   const spinAudioRef = useRef<HTMLAudioElement | null>(null);
+  const [wheelVisualFreeze, setWheelVisualFreeze] = useState<DailyTask[] | null>(null);
+
+  const clearWheelVisualFreeze = () => {
+    setWheelVisualFreeze(null);
+  };
 
   const activeMembersById = new Map(members.filter((member) => member.active).map((member) => [member.id, member]));
   const orderedMembers = (appConfig.memberOrder ?? [])
@@ -81,7 +113,8 @@ export default function DashboardPage() {
       : null;
 
   const wheelTasks = dailyTasks.filter((task) => !task.assignedToMemberId);
-  const wheelSegmentCount = Math.max(wheelTasks.length, 1);
+  const wheelTasksForDisplay = wheelVisualFreeze ?? wheelTasks;
+  const wheelSegmentCount = Math.max(wheelTasksForDisplay.length, 1);
   const assignedTasksByMember = dailyTasks
     .filter((task) => task.assignedToMemberId)
     .reduce<Record<string, typeof dailyTasks>>((acc, task) => {
@@ -123,6 +156,7 @@ export default function DashboardPage() {
   useEffect(() => stopSpinSound, []);
 
   const handleDateChange = (nextDate: string) => {
+    clearWheelVisualFreeze();
     setSelectedDate(nextDate);
     setDailyPlanMessage("");
     setSpinMessage("");
@@ -177,33 +211,58 @@ export default function DashboardPage() {
       return;
     }
 
-    const extraRotation = 1440 + Math.floor(Math.random() * 360);
+    // Snapshot khớp lát đang hiển thị; bỏ các việc đã phân công khỏi snapshot cũ (nếu có)
+    const unassignedIds = new Set(wheelTasks.map((t) => t.id));
+    const snapshotAtSpinStart = wheelVisualFreeze
+      ? (() => {
+          const pruned = wheelVisualFreeze.filter((t) => unassignedIds.has(t.id));
+          return pruned.length > 0 ? pruned : wheelTasks.slice();
+        })()
+      : wheelTasks.slice();
+
+    if (snapshotAtSpinStart.length === 0) {
+      clearWheelVisualFreeze();
+      setToast({ text: "Không còn công việc chưa phân công.", tone: "error" });
+      return;
+    }
+
+    clearWheelVisualFreeze();
+    setWheelVisualFreeze(snapshotAtSpinStart);
+
     setIsSpinning(true);
-    setWheelRotationDeg((prev) => prev + extraRotation);
     setSpinMessage("Đang quay vòng tròn phân công...");
     setSpinMessageTone("info");
     setPending(true);
-    await startSpinSound();
+    void startSpinSound();
+
+    const startRot = wheelRotationDeg;
+    const extraSpin = 2160 + Math.floor(Math.random() * 360);
+    const endRot = startRot + extraSpin;
+    setWheelRotationDeg(endRot);
 
     try {
-      await new Promise<void>((resolve) => {
-        window.setTimeout(() => resolve(), 2200);
-      });
+      await sleep(WHEEL_SPIN_MS);
 
-      const result = await assignTaskBySpin({
+      const winIdx = segmentIndexUnderPointer(snapshotAtSpinStart.length, endRot);
+      const pickedTask = snapshotAtSpinStart[winIdx];
+
+      const result = await assignUnassignedTaskById({
         dateKey: selectedDate,
         performedByName: username,
+        taskId: pickedTask.id,
       });
 
-      if (result.ok) {
-        setSpinMessage(`Đã phân công "${result.selectedTaskTitle}" cho ${result.selectedMemberName}.`);
-        setSpinMessageTone("success");
-        setToast({ text: "Phân công thành công.", tone: "success" });
-      } else {
+      if (!result.ok) {
+        clearWheelVisualFreeze();
         setSpinMessage(result.message);
         setSpinMessageTone("error");
         setToast({ text: result.message, tone: "error" });
+        return;
       }
+
+      setSpinMessage(`Đã phân công "${result.selectedTaskTitle}" cho ${result.selectedMemberName}.`);
+      setSpinMessageTone("success");
+      setToast({ text: "Phân công thành công.", tone: "success" });
     } finally {
       stopSpinSound();
       setPending(false);
@@ -216,6 +275,7 @@ export default function DashboardPage() {
       return;
     }
 
+    clearWheelVisualFreeze();
     setPending(true);
     setSpinMessageTone("info");
     setSpinMessage("Đang phân công hàng loạt...");
@@ -260,6 +320,7 @@ export default function DashboardPage() {
       return;
     }
 
+    clearWheelVisualFreeze();
     setPending(true);
     const result = await deleteDailyPlan(selectedDate, username);
     setDailyPlanMessage(
@@ -332,12 +393,6 @@ export default function DashboardPage() {
 
   return (
     <main className="mx-auto flex min-h-screen w-full max-w-md flex-col gap-4 bg-gradient-to-b from-indigo-50 to-zinc-50 px-4 py-6">
-      {pending ? (
-        <div className="sticky top-3 z-20 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-700">
-          Đang xử lý...
-        </div>
-      ) : null}
-
       {toast ? (
         <div
           className={`fixed left-1/2 top-4 z-30 w-[90%] max-w-sm -translate-x-1/2 rounded-xl px-4 py-2 text-center text-sm text-white shadow-lg ${toastClass}`}
@@ -354,7 +409,7 @@ export default function DashboardPage() {
       </section>
 
       <section className="rounded-2xl bg-white p-3 shadow-md ring-1 ring-indigo-100">
-        <div className="grid grid-cols-3 gap-2">
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
           <button
             type="button"
             onClick={() => setActiveSection("plan")}
@@ -384,6 +439,16 @@ export default function DashboardPage() {
           >
             <span className="block text-lg">⏰</span>
             Nhắc việc
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveSection("rewards")}
+            className={`rounded-xl px-3 py-2 text-center text-xs font-semibold ${
+              activeSection === "rewards" ? "bg-indigo-600 text-white" : "bg-zinc-100 text-zinc-700"
+            }`}
+          >
+            <span className="block text-lg">🎁</span>
+            Phần thưởng
           </button>
         </div>
       </section>
@@ -489,6 +554,8 @@ export default function DashboardPage() {
           </div>
         </section>
       ) : null}
+
+      {activeSection === "rewards" ? <RewardsSection username={username ?? null} members={members} /> : null}
 
       {activeSection === "setup" ? (
       <section className="rounded-2xl bg-white p-5 shadow-md ring-1 ring-indigo-100">
@@ -751,7 +818,7 @@ export default function DashboardPage() {
           </p>
         ) : null}
 
-        {wheelTasks.length > 0 ? (
+        {wheelTasksForDisplay.length > 0 ? (
           <div className="mt-4 flex flex-col items-center">
             <p className="mb-2 text-sm font-medium text-zinc-700">
               Thành viên được chọn:{" "}
@@ -766,7 +833,7 @@ export default function DashboardPage() {
                 style={{
                   transform: `rotate(${wheelRotationDeg}deg)`,
                   transformOrigin: "center center",
-                  transition: "transform 2.2s cubic-bezier(0.16, 1, 0.3, 1)",
+                  transition: WHEEL_SPIN_TRANSITION,
                   background: `conic-gradient(
                     ${Array.from({ length: wheelSegmentCount })
                       .map((_, idx) => {
@@ -779,7 +846,7 @@ export default function DashboardPage() {
                   )`,
                 }}
               >
-                {wheelTasks.map((task, idx) => {
+                {wheelTasksForDisplay.map((task, idx) => {
                   const angle = (360 / wheelSegmentCount) * idx + 360 / wheelSegmentCount / 2 - 90;
                   const radius = 74;
                   const x = Math.cos((angle * Math.PI) / 180) * radius;

@@ -235,11 +235,154 @@ type AssignSpinFailure = {
     | "NO_ACTIVE_MEMBERS"
     | "NO_UNASSIGNED_TASKS"
     | "DAILY_PLAN_MISSING"
-    | "INVALID_INPUT";
+    | "INVALID_INPUT"
+    | "TASK_NOT_UNASSIGNED";
   message: string;
 };
 
 export type AssignSpinResult = AssignSpinSuccess | AssignSpinFailure;
+
+type AssignByTaskIdInput = {
+  dateKey: string;
+  performedByName: string;
+  taskId: string;
+};
+
+/** Gán đúng một task (đang chưa gán) cho thành viên theo round-robin — dùng khi kết quả vòng quay xác định bởi UI. */
+export async function assignUnassignedTaskById(input: AssignByTaskIdInput): Promise<AssignSpinResult> {
+  const dateKey = input.dateKey.trim();
+  const performedByName = input.performedByName.trim();
+  const taskId = input.taskId.trim();
+
+  if (!dateKey || !performedByName || !taskId) {
+    return {
+      ok: false,
+      reason: "INVALID_INPUT",
+      message: "Ngày, tên người quay hoặc công việc không hợp lệ.",
+    };
+  }
+
+  const planSnapshot = await getDoc(dailyPlanDocRef(dateKey));
+  if (!planSnapshot.exists()) {
+    return {
+      ok: false,
+      reason: "DAILY_PLAN_MISSING",
+      message: "Kế hoạch ngày chưa tồn tại. Hãy tạo kế hoạch trước khi quay.",
+    };
+  }
+
+  const configSnapshot = await getDoc(appConfigRef());
+  const config = configSnapshot.exists()
+    ? (configSnapshot.data() as { nextMemberIndex?: number; memberOrder?: string[] })
+    : defaultAppConfig;
+
+  const memberSnapshots = await getDocs(query(collection(db, "members"), where("active", "==", true)));
+  const activeMembersById = new Map<string, Member>();
+  memberSnapshots.docs.forEach((item) => {
+    const value = item.data() as Omit<Member, "id">;
+    activeMembersById.set(item.id, { id: item.id, ...value });
+  });
+
+  const orderedFromConfig = (config.memberOrder ?? [])
+    .map((memberId) => activeMembersById.get(memberId))
+    .filter((item): item is Member => Boolean(item));
+
+  const activeMembersNotInOrder = [...activeMembersById.values()].filter(
+    (member) => !(config.memberOrder ?? []).includes(member.id),
+  );
+  const orderedActiveMembers = [...orderedFromConfig, ...activeMembersNotInOrder];
+
+  const repairedMemberOrder = orderedActiveMembers.map((member) => member.id);
+
+  if (orderedActiveMembers.length === 0) {
+    return {
+      ok: false,
+      reason: "NO_ACTIVE_MEMBERS",
+      message: "Không có thành viên hoạt động để phân công.",
+    };
+  }
+
+  const unassignedTaskSnapshots = await getDocs(
+    query(dailyTasksCollectionRef(dateKey), where("assignedToMemberId", "==", null)),
+  );
+
+  if (unassignedTaskSnapshots.empty) {
+    return {
+      ok: false,
+      reason: "NO_UNASSIGNED_TASKS",
+      message: "Tất cả công việc đã được phân công.",
+    };
+  }
+
+  const totalMembers = orderedActiveMembers.length;
+  const oldIndexRaw = config.nextMemberIndex ?? 0;
+  const oldIndex = ((oldIndexRaw % totalMembers) + totalMembers) % totalMembers;
+  const selectedMember = orderedActiveMembers[oldIndex];
+
+  const unassignedTasks = unassignedTaskSnapshots.docs.map((item) => {
+    const value = item.data() as Omit<DailyTask, "id">;
+    return {
+      id: item.id,
+      ...value,
+    };
+  });
+
+  unassignedTasks.sort((a, b) => (a.title ?? "").localeCompare(b.title ?? "", "vi"));
+
+  const selectedTask = unassignedTasks.find((t) => t.id === taskId);
+  if (!selectedTask) {
+    return {
+      ok: false,
+      reason: "TASK_NOT_UNASSIGNED",
+      message: "Công việc không còn trong danh sách chưa phân công.",
+    };
+  }
+
+  const newIndex = (oldIndex + 1) % totalMembers;
+
+  const batch = writeBatch(db);
+  batch.set(
+    doc(dailyTasksCollectionRef(dateKey), selectedTask.id),
+    {
+      assignedToMemberId: selectedMember.id,
+      assignedToMemberName: selectedMember.name,
+      assignedAt: serverTimestamp(),
+    },
+    { merge: true },
+  );
+
+  batch.set(
+    appConfigRef(),
+    {
+      memberOrder: repairedMemberOrder,
+      nextMemberIndex: newIndex,
+    },
+    { merge: true },
+  );
+
+  batch.set(doc(spinLogsCollectionRef(dateKey)), {
+    selectedMemberId: selectedMember.id,
+    selectedMemberName: selectedMember.name,
+    selectedTaskId: selectedTask.id,
+    selectedTaskTitle: selectedTask.title,
+    oldIndex,
+    newIndex,
+    performedByName,
+    createdAt: serverTimestamp(),
+  });
+
+  await batch.commit();
+
+  return {
+    ok: true,
+    selectedMemberId: selectedMember.id,
+    selectedMemberName: selectedMember.name,
+    selectedTaskId: selectedTask.id,
+    selectedTaskTitle: selectedTask.title,
+    oldIndex,
+    newIndex,
+  };
+}
 
 export async function assignTaskBySpin(input: AssignSpinInput): Promise<AssignSpinResult> {
   const dateKey = input.dateKey.trim();
@@ -318,6 +461,9 @@ export async function assignTaskBySpin(input: AssignSpinInput): Promise<AssignSp
       ...value,
     };
   });
+
+  // Khớp thứ tự với UI (subscribeDailyTasks dùng orderBy("title","asc"))
+  unassignedTasks.sort((a, b) => (a.title ?? "").localeCompare(b.title ?? "", "vi"));
 
   const randomTaskIndex = Math.floor(Math.random() * unassignedTasks.length);
   const selectedTask = unassignedTasks[randomTaskIndex];
